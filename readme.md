@@ -1,0 +1,5 @@
+- Connect mysql 
+- Table test(id,name)
+- list (get)
+- add (post) 
+- delete (delete)
