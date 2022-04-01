@@ -5,9 +5,11 @@ import (
 	"fmt"
 	"log"
 	"net/http"
+	"os"
 
 	_ "github.com/go-sql-driver/mysql"
 	"github.com/gorilla/mux"
+	"gopkg.in/ini.v1"
 )
 
 type book struct {
@@ -15,28 +17,49 @@ type book struct {
 	Name string `json:"name"`
 }
 
-func getBooks(w http.ResponseWriter, r *http.Request) {
-	db, err := sql.Open("mysql", "user:password@tcp(127.0.0.1:3306)/library")
+func getconnect() *sql.DB {
+	cfg, err := ini.Load("setup.ini")
+	if err != nil {
+		fmt.Printf("Fail to read file: %v", err)
+		os.Exit(1)
+		return nil
+	}
 
-	defer db.Close()
+	//db, err := sql.Open("mysql", "user:password@tcp(127.0.0.1:3306)/library")
+	db, err := sql.Open("mysql", fmt.Sprintf("%s:%s@tcp(%s)/%s",
+		cfg.Section("mysql").Key("user"),
+		cfg.Section("mysql").Key("password"),
+		cfg.Section("mysql").Key("host"),
+		cfg.Section("mysql").Key("database")))
 
-	// if there is an error opening the connection, handle it
 	if err != nil {
 		log.Print(err.Error())
+		return nil
+	}
+
+	return db
+
+}
+
+func getBooks(w http.ResponseWriter, r *http.Request) {
+	db := getconnect()
+
+	if db == nil {
 		return
 	}
 
-	// Execute the query
+	defer db.Close()
+
 	results, err := db.Query("SELECT id, name FROM Books")
 	if err != nil {
-		panic(err.Error()) // proper error handling instead of panic in your app
+		panic(err.Error())
 	}
 
 	for results.Next() {
 		var book book
 		err = results.Scan(&book.ID, &book.Name)
 		if err != nil {
-			panic(err.Error()) // proper error handling instead of panic in your app
+			panic(err.Error())
 		}
 
 		fmt.Println(book.Name)
@@ -45,15 +68,13 @@ func getBooks(w http.ResponseWriter, r *http.Request) {
 }
 
 func deleteBook(w http.ResponseWriter, r *http.Request) {
-	db, err := sql.Open("mysql", "user:password@tcp(127.0.0.1:3306)/library")
+	db := getconnect()
 
-	defer db.Close()
-
-	// if there is an error opening the connection, handle it
-	if err != nil {
-		log.Print(err.Error())
+	if db == nil {
 		return
 	}
+
+	defer db.Close()
 
 	res, err := db.Query("delete  FROM Books where id = '1'")
 
@@ -66,16 +87,15 @@ func deleteBook(w http.ResponseWriter, r *http.Request) {
 }
 
 func createBook(w http.ResponseWriter, r *http.Request) {
-	db, err := sql.Open("mysql", "user:password@tcp(127.0.0.1:3306)/library")
+	db := getconnect()
 
-	defer db.Close()
-
-	if err != nil {
-		log.Print(err.Error())
+	if db == nil {
 		return
 	}
 
-	sql := "INSERT INTO books(name) VALUES ('New book name')"
+	defer db.Close()
+
+	sql := "INSERT INTO Books(name) VALUES ('New book name')"
 	res, err := db.Exec(sql)
 
 	if err != nil {
