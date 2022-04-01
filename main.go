@@ -2,6 +2,7 @@ package main
 
 import (
 	"database/sql"
+	"encoding/json"
 	"fmt"
 	"log"
 	"net/http"
@@ -17,7 +18,7 @@ type book struct {
 	Name string `json:"name"`
 }
 
-func getconnect() *sql.DB {
+func dbconnect() *sql.DB {
 	cfg, err := ini.Load("setup.ini")
 	if err != nil {
 		fmt.Printf("Fail to read file: %v", err)
@@ -42,7 +43,7 @@ func getconnect() *sql.DB {
 }
 
 func getBooks(w http.ResponseWriter, r *http.Request) {
-	db := getconnect()
+	db := dbconnect()
 
 	if db == nil {
 		return
@@ -55,20 +56,25 @@ func getBooks(w http.ResponseWriter, r *http.Request) {
 		panic(err.Error())
 	}
 
+	books := []book{}
+
 	for results.Next() {
 		var book book
 		err = results.Scan(&book.ID, &book.Name)
 		if err != nil {
 			panic(err.Error())
 		}
+		books = append(books, book)
 
-		fmt.Println(book.Name)
 	}
 
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusOK)
+	json.NewEncoder(w).Encode(books)
 }
 
 func deleteBook(w http.ResponseWriter, r *http.Request) {
-	db := getconnect()
+	db := dbconnect()
 
 	if db == nil {
 		return
@@ -76,7 +82,8 @@ func deleteBook(w http.ResponseWriter, r *http.Request) {
 
 	defer db.Close()
 
-	res, err := db.Query("delete  FROM Books where id = '1'")
+	vars := mux.Vars(r)
+	res, err := db.Query(fmt.Sprintf("delete  FROM Books where id = '%s'", vars["id"]))
 
 	defer res.Close()
 
@@ -87,7 +94,15 @@ func deleteBook(w http.ResponseWriter, r *http.Request) {
 }
 
 func createBook(w http.ResponseWriter, r *http.Request) {
-	db := getconnect()
+	var book book
+
+	err := json.NewDecoder(r.Body).Decode(&book)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	db := dbconnect()
 
 	if db == nil {
 		return
@@ -95,21 +110,13 @@ func createBook(w http.ResponseWriter, r *http.Request) {
 
 	defer db.Close()
 
-	sql := "INSERT INTO Books(name) VALUES ('New book name')"
+	sql := fmt.Sprintf("INSERT INTO Books(name) VALUES ('%s')", book.Name)
 	res, err := db.Exec(sql)
+	_ = res
 
 	if err != nil {
 		panic(err.Error())
 	}
-
-	lastId, err := res.LastInsertId()
-
-	if err != nil {
-		log.Fatal(err)
-	}
-
-	fmt.Printf("The last inserted row id: %d\n", lastId)
-
 }
 
 func main() {
